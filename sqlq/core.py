@@ -25,7 +25,7 @@ class SqlQueue(object):
             conn.close()
         def backup():
             import shutil
-            shutil.copy(_db, os.path.join(os.path.dirname(_db), os.path.basename(_db)+".{}.db".format(int(time.time()*1000))))
+            shutil.copy(_db, os.path.join(os.path.dirname(_db), "bak", os.path.basename(_db)+".{}.db".format(int(time.time()*1000))))
         def do_backup(conn, db):
             disconnect_db(conn, db)
             backup()
@@ -46,7 +46,6 @@ class SqlQueue(object):
                 tid, sql, data = self.sqlq.get()
                 self.exc_result[tid] = self.__exc(db, sql, data)
                 self.sqlq.task_done()
-                timeout_commit = 0
             else:
                 if (timeout_commit > self.timeout_commit) and len(self.exc_result) == 0:
                     conn.commit()
