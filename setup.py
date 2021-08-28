@@ -18,11 +18,15 @@ open("README.md", "wb").write(readme.encode("utf-8"))
 description = re.search(r"<i>(.*?)</i>", readme)[1]
 setup(
     name="sqlq",
-    version="0.12.0",
+    version="0.12.1",
     keywords=["sql sqlite3 queue"],
     packages=find_packages(),
     package_data={
-        "": ["*.ttc"],
+        "": [
+            "*.ttc",
+            "pkg_data.json",
+            "example/*.*",
+        ],
     },
     url="https://github.com/foxe6/sqlq",
     license="AGPL-3.0",
@@ -32,7 +36,7 @@ setup(
     long_description=readme,
     long_description_content_type="text/markdown",
     install_requires=open("requirements.txt").read().splitlines(),
-    python_requires=">=3.7",
+    python_requires=">=3",
     classifiers=[
         "Programming Language :: Python :: 3.7",
         "Topic :: Utilities",
