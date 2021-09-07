@@ -2,6 +2,7 @@ import shutil
 import sqlite3
 import datetime
 import asyncio
+import queue
 from threadwrapper import *
 from filehandling import join_path, abs_main_dir
 from encryptedsocket import SC as ESC, SS as ESS
@@ -14,7 +15,7 @@ __ALL__ = ["SqlQueue"]
 
 
 class SqlQueue(object):
-    async def worker(self, _db) -> None:
+    def worker(self, _db) -> None:
         def connect_db(db):
             conn = sqlite3.connect(db)
             self.__exc(conn, "PRAGMA locking_mode=EXCLUSIVE;")
@@ -53,18 +54,19 @@ class SqlQueue(object):
             conn = do_backup(conn)
         prev_ts = time.time()
         while not self.terminate:
-            time_diff = time.time()-prev_ts
+            time_diff = (time.time()-prev_ts)*1000
             if self.do_commit or time_diff > self.timeout_commit:
                 commit_db(conn)
                 self.do_commit = False
+                prev_ts = time.time()
             elif self.do_backup or (self.auto_backup and (time_diff > self.timeout_backup)):
                 conn = do_backup(conn)
+                prev_ts = time.time()
             elif self.sqlq.qsize() > 0:
-                tid, sql, data, row_factory = await self.sqlq.get()
+                tid, sql, data, row_factory = self.sqlq.get()
                 self.exc_result[tid] = self.__exc(conn, sql, data, row_factory)
                 # self.sqlq.task_done()
-            await asyncio.sleep(1/1000, loop=self.loop)
-            prev_ts = time.time()
+            time.sleep(1/1000)
         disconnect_db(conn)
         if self.auto_backup:
             backup(_db)
@@ -126,7 +128,7 @@ class SqlQueue(object):
         if self.is_server:
             return self.wait_task_to_finish(task)
         else:
-            return self.sc.request(command=task[3:], data=args())
+            return self.sc().request(command=task[3:], data=args())
 
     def backup(self):
         return self.wrap_under_is_server("do_backup")
@@ -137,16 +139,12 @@ class SqlQueue(object):
     def stop(self):
         if self.is_server:
             self.wait_task_to_finish("terminate", "worker_dead")
-            if self.is_inside_loop:
-                self.loop.stop()
-        else:
-            self.sc.s.close()
 
     def __init__(
             self,
             server: bool = False, db: str = "",
             timeout_commit: int = 60*1000, auto_backup: bool = False, timeout_backup: int = 60*1000,
-            depth: int = 2, export_functions = None, loop: asyncio.AbstractEventLoop = None
+            depth: int = 2, export_functions = None
     ) -> None:
         self.is_server = server
         self.do_commit = False
@@ -157,8 +155,6 @@ class SqlQueue(object):
         self.auto_backup = None
         self.timeout_backup = None
         self.sqlq = None
-        self.loop = None
-        self.is_inside_loop = not loop
         self.sqlq_worker = None
         self.worker_dead = None
         self.functions = None
@@ -171,16 +167,8 @@ class SqlQueue(object):
             self.timeout_commit = timeout_commit
             self.auto_backup = auto_backup
             self.timeout_backup = timeout_backup
-            self.sqlq = asyncio.Queue()
-            self.loop = loop or asyncio.new_event_loop()
-            # self.sqlq = queue.Queue()
-            # self.sqlq_worker = threading.Thread(target=self.worker, args=(db,))
-            def sqlq_worker():
-                asyncio.set_event_loop(self.loop)
-                twa = ThreadWrapper_async(asyncio.Semaphore(1), loop=self.loop)
-                twa.add(self.worker(db))
-                twa.wait()
-            self.sqlq_worker = threading.Thread(target=sqlq_worker)
+            self.sqlq = queue.Queue()
+            self.sqlq_worker = threading.Thread(target=self.worker, args=(db,))
             self.sqlq_worker.daemon = True
             self.sqlq_worker.start()
             self.worker_dead = False
@@ -188,27 +176,42 @@ class SqlQueue(object):
             if export_functions:
                 self.functions.update(export_functions=export_functions)
 
-    async def _sql(self, tid: int, sql: str, data: tuple = (), row_factory: str = "row", _cmd: str = "sql", loop: asyncio.AbstractEventLoop = None) -> list:
+    async def _sql_async(self, tid: int, sql: str, data: tuple = (), row_factory: str = "row", _cmd: str = "sql", loop: asyncio.AbstractEventLoop = None) -> list:
         if self.is_server:
             if _cmd == "sql":
-                await self.sqlq.put([tid, sql, data, row_factory])
-                while tid not in self.exc_result:
-                    await asyncio.sleep(2/1000, loop=loop)
-                    continue
-                try:
-                    return self.exc_result[tid]
-                finally:
-                    self.exc_result.pop(tid)
+                self.sqlq.put([tid, sql, data, row_factory])
+                while True:
+                    try:
+                        return self.exc_result.pop(tid)
+                    except:
+                        await asyncio.sleep(2/1000, loop=loop)
             else:
                 try:
                     return self.functions[_cmd](*[sql, data, row_factory])
                 except Exception as e:
                     return e
         else:
-            return self.sc.request(command=_cmd, data=args(sql, data, row_factory))
+            return self.sc().request(command=_cmd, data=args(sql, data, row_factory))
 
-    def sql(self, sql: str, data: tuple = (), row_factory: str = "row",
-            result: Any = None, key: Any = None, _cmd: str = "sql", loop: asyncio.AbstractEventLoop = None) -> list:
+    def _sql(self, tid: int, sql: str, data: tuple = (), row_factory: str = "row", _cmd: str = "sql") -> list:
+        if self.is_server:
+            if _cmd == "sql":
+                self.sqlq.put([tid, sql, data, row_factory])
+                while True:
+                    try:
+                        return self.exc_result.pop(tid)
+                    except:
+                        time.sleep(2/1000)
+            else:
+                try:
+                    return self.functions[_cmd](*[sql, data, row_factory])
+                except Exception as e:
+                    return e
+        else:
+            return self.sc().request(command=_cmd, data=args(sql, data, row_factory))
+
+    def sql_(self, exc_type: str, sql: str, data: tuple = (), row_factory: str = "row",
+            result: Any = None, key: Any = None, _cmd: str = "sql") -> list:
         if result is None:
             result = {}
         if key is None:
@@ -217,23 +220,23 @@ class SqlQueue(object):
             sql = " ".join([line.strip() for line in sql.splitlines() if not line.strip().startswith("--")]).strip()
         except:
             pass
-        _loop = loop
 
-        def job():
-            try:
-                loop = asyncio.get_event_loop()
-            except:
-                loop = _loop
-                if not loop:
-                    loop = asyncio.new_event_loop()
+        def job1():
+            return self._sql(threading.get_ident(), sql, data, row_factory, _cmd)
+
+        def job2():
+            loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             twa = ThreadWrapper_async(asyncio.Semaphore(1), loop=loop)
-            twa.add(self._sql(threading.get_ident(), sql, data, row_factory, _cmd, loop), result=result, key=key)
+            twa.add(self._sql_async(threading.get_ident(), sql, data, row_factory, _cmd), result, key)
             twa.wait()
 
-        p = threading.Thread(target=job)
-        p.start()
-        p.join()
+        tw = ThreadWrapper(threading.Semaphore(1))
+        if exc_type == "async":
+            tw.add(job2)
+        else:
+            tw.add(job1, result, key)
+        tw.wait()
         if isinstance(result[key], Exception):
             if isinstance(result[key], sqlite3.OperationalError):
                 if "i/o" in str(result[key]).lower():
@@ -245,14 +248,19 @@ class SqlQueue(object):
             raise result[key]
         return result[key]
 
+    def sql(self, *args, **kwargs):
+        return self.sql_("", *args, **kwargs)
+
+    def sql_async(self, *args, **kwargs):
+        return self.sql_("async", *args, **kwargs)
+
 
 class SqlQueueE(SqlQueue):
-    def __init__(self, db_port: int = None, key_pair: key_pair_format = None, **kwargs) -> None:
+    def __init__(self, host = "127.199.71.10", db_port: int = None, key_pair: key_pair_format = None, **kwargs) -> None:
         if "db" in kwargs:
             if not os.path.isabs(kwargs["db"]):
                 kwargs["db"] = join_path(abs_main_dir(depth=int(kwargs["depth"])), kwargs["db"])
         super().__init__(**kwargs)
-        host = "127.199.71.10"
         port = db_port if db_port else 39292
         if self.is_server:
             if key_pair is None:
@@ -262,7 +270,7 @@ class SqlQueueE(SqlQueue):
             thread.daemon = True
             thread.start()
         else:
-            self.sc = ESC(host, port)
+            self.sc = lambda : ESC(host, port)
 
     def stop(self):
         super().stop()
@@ -272,12 +280,11 @@ class SqlQueueE(SqlQueue):
 
 
 class SqlQueueU(SqlQueue):
-    def __init__(self, db_port: int = None, **kwargs) -> None:
+    def __init__(self, host = "127.199.71.10", db_port: int = None, **kwargs) -> None:
         if "db" in kwargs:
             if not os.path.isabs(kwargs["db"]):
                 kwargs["db"] = join_path(abs_main_dir(depth=int(kwargs["depth"])), kwargs["db"])
         super().__init__(**kwargs)
-        host = "127.199.71.10"
         port = db_port if db_port else 39292
         if self.is_server:
             self.uss = USS(self.functions, host, port, True)
@@ -285,7 +292,7 @@ class SqlQueueU(SqlQueue):
             thread.daemon = True
             thread.start()
         else:
-            self.sc = USC(host, port)
+            self.sc = lambda : USC(host, port)
 
     def stop(self):
         super().stop()

@@ -18,7 +18,7 @@ open("README.md", "wb").write(readme.encode("utf-8"))
 description = re.search(r"<i>(.*?)</i>", readme)[1]
 setup(
     name="sqlq",
-    version="0.14.0",
+    version="0.15.0",
     keywords=["sql sqlite3 queue"],
     packages=find_packages(),
     package_data={
@@ -38,7 +38,7 @@ setup(
     install_requires=open("requirements.txt").read().splitlines(),
     python_requires=">=3",
     classifiers=[
-        "Programming Language :: Python :: 3.7",
+        "Programming Language :: Python :: 3.9",
         "Topic :: Utilities",
         "Natural Language :: English",
         "Intended Audience :: Developers",
