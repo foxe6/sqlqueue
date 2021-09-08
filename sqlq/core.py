@@ -52,16 +52,18 @@ class SqlQueue(object):
         conn = connect_db(_db)
         if self.auto_backup:
             conn = do_backup(conn)
-        prev_ts = time.time()
+        prev_commit_ts = time.time()
+        prev_backup_ts = time.time()
         while not self.terminate:
-            time_diff = (time.time()-prev_ts)*1000
-            if self.do_commit or time_diff > self.timeout_commit:
+            time_commit_diff = (time.time()-prev_commit_ts)*1000
+            time_backup_diff = (time.time()-prev_backup_ts)*1000
+            if self.do_commit or time_commit_diff > self.timeout_commit:
                 commit_db(conn)
                 self.do_commit = False
-                prev_ts = time.time()
-            elif self.do_backup or (self.auto_backup and (time_diff > self.timeout_backup)):
+                prev_commit_ts = time.time()
+            elif self.do_backup or (self.auto_backup and (time_backup_diff > self.timeout_backup)):
                 conn = do_backup(conn)
-                prev_ts = time.time()
+                prev_backup_ts = time.time()
             elif self.sqlq.qsize() > 0:
                 tid, sql, data, row_factory = self.sqlq.get()
                 self.exc_result[tid] = self.__exc(conn, sql, data, row_factory)
