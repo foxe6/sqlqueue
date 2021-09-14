@@ -111,7 +111,7 @@ class SqlQueue(object):
                 result = [dict(row) for row in result]
             return result
         except Exception as e:
-            p(f"error: [{mode}] {sql}(", data, f") due to {e}")
+            p("error: [{}] {}( {} ) due to {}".format(mode, sql, data, e))
             p(debug_info()[0])
             return e
 
