@@ -1,5 +1,5 @@
-__version__ = "0.17.0"
-__keywords__ = ["sql sqlite3 queue"]
+__version__ = "0.18.0"
+__keywords__ = ["sql sqlite3 queue socket server client rpc"]
 
 
 if not __version__.endswith(".0"):
