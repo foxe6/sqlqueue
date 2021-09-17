@@ -19,6 +19,7 @@ sqlqueue
     |---- _sql()
     |---- sql_async()
     |---- _sql_async()
+    |---- backup()
     |---- commit()
     '---- stop()
 ```

@@ -4,17 +4,14 @@ import datetime
 import asyncio
 import queue
 from threadwrapper import *
-from filehandling import join_path, abs_main_dir
-from encryptedsocket import SC as ESC, SS as ESS
-from unencryptedsocket import SC as USC, SS as USS
 from easyrsa import *
-from omnitools import args, key_pair_format
+from omnitools import args, key_pair_format, join_path, abs_main_dir
 
 
 __ALL__ = ["SqlQueue"]
 
 
-class SqlQueue(object):
+class SqlQueue:
     def worker(self, _db) -> None:
         def connect_db(db):
             conn = sqlite3.connect(db)
@@ -78,7 +75,7 @@ class SqlQueue(object):
             self.exploded_reason = traceback.format_exc()
         self.worker_dead = True
 
-    def __exc(self, conn: sqlite3.Connection, sql: str, data: tuple = (), row_factory: str = "row") -> Any:
+    def __exc(self, conn: sqlite3.Connection, sql: str, data: tuple = (), row_factory: str = "row"):
         mode = ""
         try:
             if row_factory == "list":
@@ -217,7 +214,7 @@ class SqlQueue(object):
             return self.sc().request(command=_cmd, data=args(sql, data, row_factory))
 
     def sql_(self, exc_type: str, sql: str, data: tuple = (), row_factory: str = "row",
-            result: Any = None, key: Any = None, _cmd: str = "sql") -> list:
+            result= None, key= None, _cmd: str = "sql") -> list:
         if result is None:
             result = {}
         if key is None:
@@ -268,20 +265,21 @@ class SqlQueueE(SqlQueue):
                 kwargs["db"] = join_path(abs_main_dir(depth=int(kwargs["depth"])), kwargs["db"])
         super().__init__(**kwargs)
         port = db_port if db_port else 39292
+        from encryptedsocket import SC, SS
         if self.is_server:
             if key_pair is None:
                 key_pair = EasyRSA(bits=1024).gen_key_pair()
-            self.ess = ESS(key_pair, self.functions, host, port, True)
-            thread = threading.Thread(target=self.ess.start)
+            self.ss = SS(key_pair, self.functions, host, port, True)
+            thread = threading.Thread(target=self.ss.start)
             thread.daemon = True
             thread.start()
         else:
-            self.sc = lambda : ESC(host, port)
+            self.sc = lambda: SC(host, port)
 
     def stop(self):
         super().stop()
         if self.is_server:
-            self.ess.stop()
+            self.ss.stop()
         return True
 
 
@@ -292,18 +290,19 @@ class SqlQueueU(SqlQueue):
                 kwargs["db"] = join_path(abs_main_dir(depth=int(kwargs["depth"])), kwargs["db"])
         super().__init__(**kwargs)
         port = db_port if db_port else 39292
+        from unencryptedsocket import SC, SS
         if self.is_server:
-            self.uss = USS(self.functions, host, port, True)
-            thread = threading.Thread(target=self.uss.start)
+            self.ss = SS(self.functions, host, port, True)
+            thread = threading.Thread(target=self.ss.start)
             thread.daemon = True
             thread.start()
         else:
-            self.sc = lambda : USC(host, port)
+            self.sc = lambda: SC(host, port)
 
     def stop(self):
         super().stop()
         if self.is_server:
-            self.uss.stop()
+            self.ss.stop()
         return True
 
 

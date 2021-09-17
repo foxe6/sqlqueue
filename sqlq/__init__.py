@@ -1,4 +1,4 @@
-__version__ = "0.18.0"
+__version__ = "1.0.0"
 __keywords__ = ["sql sqlite3 queue socket server client rpc"]
 
 

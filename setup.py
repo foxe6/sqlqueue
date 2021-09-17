@@ -13,12 +13,12 @@ badges = """[![version](https://img.shields.io/pypi/v/<name>.svg)](https://pypi.
 name = os.path.basename(os.path.dirname(os.path.abspath(__file__)))
 badges = re.sub(r"<name>", name, badges)
 readme = open("README.md", "rb").read().decode("utf-8")
-readme = re.sub(r"(<badges>).*?(</badges>)", rf"\g<1>{badges}\g<2>", readme, flags=re.DOTALL)
+readme = re.sub(r"(<badges>).*?(</badges>)", r"\g<1>{}\g<2>".format(badges), readme, flags=re.DOTALL)
 open("README.md", "wb").write(readme.encode("utf-8"))
 description = re.search(r"<i>(.*?)</i>", readme)[1]
 setup(
     name="sqlq",
-    version="0.18.0",
+    version="1.0.0",
     keywords=["sql sqlite3 queue socket server client rpc"],
     packages=find_packages(),
     package_data={
@@ -26,7 +26,10 @@ setup(
             "*.ttc",
             "pkg_data.json",
             "example/*.*",
-            "../*.*",
+            "../*.txt",
+            "../*.md",
+            "../LICENSE",
+            "../.gitignore",
         ],
     },
     url="https://github.com/foxe6/sqlq",
