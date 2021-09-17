@@ -3,6 +3,7 @@ import sqlite3
 import datetime
 import asyncio
 import queue
+import os
 from threadwrapper import *
 from easyrsa import *
 from omnitools import args, key_pair_format, join_path, abs_main_dir
