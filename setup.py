@@ -18,7 +18,7 @@ open("README.md", "wb").write(readme.encode("utf-8"))
 description = re.search(r"<i>(.*?)</i>", readme)[1]
 setup(
     name="sqlq",
-    version="1.1.0",
+    version="1.2.0",
     keywords=["sql sqlite3 queue socket server client rpc"],
     packages=find_packages(),
     package_data={

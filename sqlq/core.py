@@ -4,6 +4,7 @@ import datetime
 import asyncio
 import queue
 import os
+import json
 from threadwrapper import *
 from easyrsa import *
 from omnitools import args, key_pair_format, join_path, abs_main_dir
@@ -14,6 +15,21 @@ __ALL__ = ["SqlQueue"]
 
 class SqlQueue:
     def worker(self, _db) -> None:
+        def bak_path(db):
+            now = datetime.datetime.now()
+            a, b = os.path.splitext(os.path.basename(db))
+            c = os.path.join(
+                os.path.dirname(db),
+                "bak",
+                str(now.year),
+                str(now.month).zfill(2),
+                str(now.day).zfill(2),
+                str(now.hour).zfill(2),
+                str(now.minute).zfill(2),
+                "{}.{}.{}".format(a, int(time.time()*1000), b)
+            )
+            os.makedirs(os.path.dirname(c), exist_ok=True)
+            return c
         def connect_db(db):
             conn = sqlite3.connect(db)
             self.__exc(conn, "PRAGMA locking_mode=EXCLUSIVE;")
@@ -29,18 +45,7 @@ class SqlQueue:
             if journal_mode == "wal":
                 self.__exc(conn, "PRAGMA wal_checkpoint(PASSIVE);")
         def backup(db):
-            now = datetime.datetime.now()
-            new_db = os.path.join(
-                os.path.dirname(db),
-                "bak",
-                str(now.year),
-                str(now.month).zfill(2),
-                str(now.day).zfill(2),
-                str(now.hour).zfill(2),
-                str(now.minute).zfill(2),
-                os.path.splitext(os.path.basename(db))[0]+".{}.db".format(int(time.time()*1000))
-            )
-            os.makedirs(os.path.dirname(new_db), exist_ok=True)
+            new_db = bak_path(db)
             shutil.copyfile(db, new_db)
         def do_backup(conn):
             disconnect_db(conn)
@@ -74,6 +79,10 @@ class SqlQueue:
         except:
             self.ioerror = True
             self.exploded_reason = traceback.format_exc()
+            queue_left = []
+            while self.sqlq.qsize():
+                queue_left.append(self.sqlq.get())
+            open(bak_path(_db)+".queue", "wb").write(json.dumps(queue_left).encode())
         self.worker_dead = True
 
     def __exc(self, conn: sqlite3.Connection, sql: str, data: tuple = (), row_factory: str = "row"):
